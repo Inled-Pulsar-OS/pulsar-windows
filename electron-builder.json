@@ -22,7 +22,8 @@
         "artifactName": "${name}-${version}-${arch}.${ext}",
         "desktop": {
             "entry": {
-                "Comment": "Ejecuta aplicaciones de Windows en Pulsar OS de forma nativa",
+                "Comment": "Run Windows applications seamlessly on Pulsar OS",
+                "Comment[es]": "Ejecuta aplicaciones de Windows en Pulsar OS de forma nativa",
                 "Keywords": "windows;pulsar;vm;virtualization;rdp;freerdp;remoteapp;docker;kvm;apps;",
                 "MimeType": "application/x-ms-dos-executable;application/x-msdownload;application/exe;application/x-exe;application/x-msi;application/vnd.microsoft.portable-executable;"
             }

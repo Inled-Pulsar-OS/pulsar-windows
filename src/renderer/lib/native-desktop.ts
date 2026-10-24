@@ -25,7 +25,8 @@ export function ensureAutostartEntry(): void {
         const content = `[Desktop Entry]
 Type=Application
 Name=Pulsar Windows Background Service
-Comment=Inicia Pulsar Windows en segundo plano para abrir aplicaciones rápidamente
+Comment=Starts Pulsar Windows background daemon for fast app launching
+Comment[es]=Inicia Pulsar Windows en segundo plano para abrir aplicaciones rápidamente
 Exec=pulsar-windows --background
 Icon=pulsar-windows
 Terminal=false
@@ -51,8 +52,10 @@ export function ensureMimeHandler(): void {
         const content = `[Desktop Entry]
 Version=1.0
 Type=Application
-Name=Pulsar Windows (Ejecutar en Windows)
-Comment=Ejecutar archivos .exe y .msi con Pulsar Windows
+Name=Pulsar Windows (Run in Windows)
+Name[es]=Pulsar Windows (Ejecutar en Windows)
+Comment=Run .exe and .msi files with Pulsar Windows
+Comment[es]=Ejecutar archivos .exe y .msi con Pulsar Windows
 Exec=pulsar-windows %f
 Icon=pulsar-windows
 Terminal=false
@@ -166,7 +169,8 @@ Version=1.0
 Type=Application
 Name=${displayName} (Windows)
 GenericName=Windows Application
-Comment=Ejecutar ${displayName} en Pulsar Windows
+Comment=Run ${displayName} in Pulsar Windows
+Comment[es]=Ejecutar ${displayName} en Pulsar Windows
 Exec=pulsar-windows --launch="${displayName}"
 Icon=${iconPath}
 Terminal=false
