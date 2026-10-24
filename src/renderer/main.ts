@@ -17,6 +17,19 @@ const process: typeof import("process") = require("node:process");
  */
 process.env.PATH && (process.env.PATH += `:${DEFAULT_HOMEBREW_DIR}`);
 
+const { ipcRenderer } = require("electron");
+if (ipcRenderer) {
+    ipcRenderer.on("launch-app-request", async (_event: any, target: string) => {
+        try {
+            const { Winboat } = await import("./lib/winboat");
+            const wb = Winboat.getInstance();
+            await wb.launchAppByNameOrPath(target);
+        } catch (err) {
+            console.error("Error handling launch-app-request:", err);
+        }
+    });
+}
+
 createApp(App)
     .directive("auto-scroll", autoScroll)
     .use(router)

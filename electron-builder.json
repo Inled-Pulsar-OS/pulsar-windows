@@ -1,6 +1,7 @@
 {
-    "appId": "com.teabox.winboat",
-    "productName": "WinBoat",
+    "appId": "org.pulsar.windows",
+    "productName": "Pulsar Windows",
+    "executableName": "pulsar-windows",
     "directories": {
         "output": "dist"
     },
@@ -9,21 +10,20 @@
         "oneClick": false,
         "perMachine": false,
         "allowToChangeInstallationDirectory": true,
-        "shortcutName": "WinBoat"
+        "shortcutName": "Pulsar Windows"
     },
     "win": {
         "target": "nsis"
     },
     "linux": {
         "icon": "icons/winboat_logo.svg",
-        "target": ["appimage", "deb", "rpm", "tar.bz2"],
+        "target": ["appimage", "deb", "tar.gz"],
         "category": "Utility",
         "artifactName": "${name}-${version}-${arch}.${ext}",
         "desktop": {
             "entry": {
-                "Comment[ru]": "Запуск приложений Windows в Linux с бесшовной интеграцией",
-                "Keywords": "windows;vm;virtual machine;virtualization;rdp;freerdp;remoteapp;docker;kvm;apps;",
-                "Keywords[ru]": "windows;vm;rdp;freerdp;docker;kvm;виртуальная машина;виртуализация;приложения windows;программы;"
+                "Comment": "Ejecuta aplicaciones de Windows en Pulsar OS de forma nativa",
+                "Keywords": "windows;pulsar;vm;virtualization;rdp;freerdp;remoteapp;docker;kvm;apps;"
             }
         }
     },

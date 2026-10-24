@@ -3,7 +3,7 @@ import Chalk from "chalk";
 
 export default function compile(directory) {
     return new Promise<void>((resolve, reject) => {
-        const tscProcess = ChildProcess.exec("tsc", {
+        const tscProcess = ChildProcess.exec("bun x tsc", {
             cwd: directory,
         });
 

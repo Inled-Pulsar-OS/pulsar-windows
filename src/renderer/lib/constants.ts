@@ -2,10 +2,10 @@ const os: typeof import("os") = require("node:os");
 const process: typeof import("process") = require("node:process");
 const path: typeof import("path") = require("node:path");
 
-// Should be {XDG_DATA_HOME}/winboat-app or {home}/.local/share/winboat-app if missing
+// Should be {XDG_DATA_HOME}/pulsar-windows or {home}/.local/share/pulsar-windows if missing
 export const WINBOAT_DIR = process.env.XDG_DATA_HOME ?
-    path.join(process.env.XDG_DATA_HOME, "winboat-app") :
-    path.join(os.homedir(), ".local", "share", "winboat-app");
+    path.join(process.env.XDG_DATA_HOME, "pulsar-windows") :
+    path.join(os.homedir(), ".local", "share", "pulsar-windows");
 export const DEFAULT_HOMEBREW_DIR = path.join(os.homedir(), "../linuxbrew/.linuxbrew/bin");
 
 export const CONTAINER_LOG_FILE = path.join(WINBOAT_DIR, "container.log");
@@ -15,13 +15,13 @@ export const CONTAINER_LOG_FILE = path.join(WINBOAT_DIR, "container.log");
 export const GUEST_TOKEN_PATH = path.join(WINBOAT_DIR, "guest_token");
 
 export const WINDOWS_VERSIONS = {
+    tiny11: "Tiny11 (Recomendado - Ligero y Rápido)",
     "11": "Windows 11 Pro",
     "11l": "Windows 11 LTSC 2024",
     "11e": "Windows 11 Enterprise",
     "10": "Windows 10 Pro",
     "10l": "Windows 10 LTSC 2021",
-    "10e": "Windows 10 Enterprise",
-    custom: "Custom Windows",
+    custom: "ISO personalizada...",
 };
 
 export type WindowsVersionKey = keyof typeof WINDOWS_VERSIONS;

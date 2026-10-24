@@ -1,5 +1,5 @@
 import { assert } from "@vueuse/core";
-import { ref, type Ref } from "vue";
+import { ref, watch, type Ref } from "vue";
 import YAML from "yaml";
 import type { ComposeConfig, CustomAppCallbacks, GuestServerVersion, Metrics, WinApp } from "../../types";
 import { AppIcons } from "../data/appicons";
@@ -15,6 +15,9 @@ import { ContainerRuntimes, createContainer } from "./containers/common";
 import { ContainerManager, ContainerStatus, isStaleContainerError } from "./containers/container";
 import { ExecFileAsyncError } from "./exec-helper";
 import { QMPManager } from "./qmp";
+import { syncNativeDesktopEntries, slugify } from "./native-desktop";
+
+const { ipcRenderer }: typeof import("electron") = require("electron");
 
 const nodeFetch: typeof import("node-fetch").default = require("node-fetch");
 const fs: typeof import("fs") = require("node:fs");
@@ -125,6 +128,10 @@ class AppManager {
         }
 
         this.appCache = newApps;
+        // Synchronize .desktop shortcuts with GNOME / Linux application menu
+        syncNativeDesktopEntries(this.appCache).catch(err => {
+            logger.error(`Error syncing native desktop entries: ${err}`);
+        });
     }
 
     async getApps(): Promise<WinApp[]> {
@@ -187,6 +194,9 @@ class AppManager {
         this.appUsageCache[name] = 0;
         await this.writeToDisk();
         this.#wbConfig!.config.customApps = this.#wbConfig!.config.customApps.concat(customWinApp);
+        syncNativeDesktopEntries(this.appCache).catch(err => {
+            logger.error(`Error syncing native desktop entries: ${err}`);
+        });
     }
 
     async updateCustomApp(oldName: string, updatedApp: { Name: string; Path: string; Args: string; Icon: string }) {
@@ -283,6 +293,13 @@ export class Winboat {
         }, 1000);
 
         this.appMgr = new AppManager();
+
+        if (ipcRenderer) {
+            ipcRenderer.on("launch-app-request", async (_event: any, target: string) => {
+                logger.info(`IPC received launch-app-request for: ${target}`);
+                await this.launchAppByNameOrPath(target);
+            });
+        }
     }
 
     /**
@@ -689,6 +706,68 @@ export class Winboat {
         fs.rmSync(WINBOAT_DIR, { recursive: true, force: true });
         console.info(`Removed ${WINBOAT_DIR}`);
         console.info("So long and thanks for all the fish!");
+    }
+
+    async launchAppByNameOrPath(target: string) {
+        logger.info(`Requested launchAppByNameOrPath for: "${target}"`);
+        const apps = (await this.appMgr?.getApps()) || [];
+
+        const cleanTarget = target.trim().toLowerCase();
+        const targetSlug = slugify(cleanTarget);
+
+        let foundApp = apps.find(a => {
+            const name = a.Name.toLowerCase();
+            const cleanName = name.replace(/^[⚙️🖥️]\s*/, "");
+            const filePath = a.Path.toLowerCase();
+            const normalizedPath = filePath.replace(/\\/g, "/");
+            const baseName = path.basename(normalizedPath);
+            const nameWithoutExt = path.basename(normalizedPath, path.extname(normalizedPath));
+
+            return (
+                name === cleanTarget ||
+                cleanName === cleanTarget ||
+                slugify(cleanName) === targetSlug ||
+                slugify(name) === targetSlug ||
+                filePath === cleanTarget ||
+                normalizedPath === cleanTarget ||
+                baseName === cleanTarget ||
+                nameWithoutExt === cleanTarget
+            );
+        });
+
+        if (!foundApp) {
+            foundApp = {
+                Name: path.basename(target, path.extname(target)) || target,
+                Path: target,
+                Args: "",
+                Source: "guest",
+                Usage: 0,
+            };
+        }
+
+        if (this.isOnline.value) {
+            await this.launchApp(foundApp);
+        } else {
+            logger.info(`Pulsar Windows is offline. Starting VM to launch ${foundApp.Name}...`);
+            try {
+                new Notification("Pulsar Windows", {
+                    body: `Iniciando Windows en segundo plano para abrir ${foundApp.Name}...`,
+                });
+            } catch (_) {}
+
+            if (this.containerStatus.value !== ContainerStatus.RUNNING) {
+                await this.startContainer();
+            }
+
+            // Queue launch once online
+            const stopWatch = watch(this.isOnline, async online => {
+                if (online) {
+                    stopWatch();
+                    logger.info(`Online detected! Launching queued app: ${foundApp!.Name}`);
+                    await this.launchApp(foundApp!);
+                }
+            });
+        }
     }
 
     async launchApp(app: WinApp) {
