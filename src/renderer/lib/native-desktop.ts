@@ -62,7 +62,7 @@ NoDisplay=false
 `;
         fs.writeFileSync(mimeDesktopPath, content, "utf-8");
         exec(
-            "xdg-mime default pulsar-windows-installer.desktop application/x-ms-dos-executable application/x-msdownload application/x-msi application/vnd.microsoft.portable-executable application/x-exe",
+            "xdg-mime default pulsar-windows.desktop application/x-ms-dos-executable application/x-msdownload application/exe application/x-exe application/x-msi application/vnd.microsoft.portable-executable",
             () => {}
         );
         exec("update-desktop-database ~/.local/share/applications", () => {});
