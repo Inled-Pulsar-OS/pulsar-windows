@@ -10,6 +10,15 @@
 #------------------------------------------------------------------------------
 
 # --- Setup ---
+# Disable Snap Assist / Snap Flyout in Windows 11
+try {
+    $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+    if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+    Set-ItemProperty -Path $regPath -Name "EnableSnapAssistFlyout" -Value 0 -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $regPath -Name "SnapAssist" -Value 0 -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $regPath -Name "JointResize" -Value 0 -ErrorAction SilentlyContinue
+} catch {}
+
 # Load System.Drawing for icon extraction, suppress errors if already loaded
 Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
 

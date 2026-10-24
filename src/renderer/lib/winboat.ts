@@ -854,7 +854,6 @@ export class Winboat {
                 this.#wbConfig?.config.smartcardEnabled ? "/smartcard" : "",
                 `/scale:${effectiveScale}`,
                 `/scale-desktop:${effectiveScaleDesktop}`,
-                "+dynamic-resolution",
             ]);
         } else {
             const appCmd = app.Args && app.Args.trim() !== "" ? `,cmd:"${app.Args}"` : "";
@@ -863,9 +862,7 @@ export class Winboat {
                 multiMonFlag,
                 `/scale:${effectiveScale}`,
                 `/scale-desktop:${effectiveScaleDesktop}`,
-                "+dynamic-resolution",
-                `/wm-class:winboat-${cleanAppName}`,
-                `/app:program:${app.Path},name:${cleanAppName}${appCmd},hidef:on`,
+                `/app:program:${app.Path},name:${cleanAppName}${appCmd}`,
             ]);
         }
 
@@ -873,6 +870,12 @@ export class Winboat {
 
         this.appMgr?.incrementAppUsage(app);
         this.appMgr?.writeToDisk();
+
+        // Terminate any existing FreeRDP process so only ONE clean connection manages the session
+        try {
+            const { execSync } = require("child_process");
+            execSync("killall -9 xfreerdp3 xfreerdp 2>/dev/null || true");
+        } catch (_) {}
 
         if (!freeRDPInstallation) {
             logger.error("No FreeRDP installation found");
