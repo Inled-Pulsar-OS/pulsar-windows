@@ -86,6 +86,25 @@ function extractLaunchArg(argv: string[]): string | null {
         }
     }
 
+    // 3. Check for standalone file paths (e.g. from file manager "Open with..." or MIME association)
+    for (let i = 1; i < argv.length; i++) {
+        const arg = argv[i].trim().replace(/^["']|["']$/g, "");
+        if (arg.startsWith("-")) continue;
+        if (arg.includes("pulsar-windows") || arg.includes("electron") || arg.includes("main.js")) continue;
+
+        const lower = arg.toLowerCase();
+        if (
+            lower.endsWith(".exe") ||
+            lower.endsWith(".msi") ||
+            lower.endsWith(".bat") ||
+            lower.endsWith(".cmd") ||
+            lower.endsWith(".lnk") ||
+            (arg.startsWith("/") && fs.existsSync(arg))
+        ) {
+            return arg;
+        }
+    }
+
     return null;
 }
 
@@ -194,6 +213,16 @@ function createWindow() {
     mainWindow.webContents.on("did-finish-load", () => {
         if (initialLaunch) {
             console.log(`[Pulsar Windows] Forwarding initial launch request: ${initialLaunch}`);
+            mainWindow?.webContents.send("launch-app-request", initialLaunch);
+            setTimeout(() => {
+                mainWindow?.webContents.send("launch-app-request", initialLaunch);
+            }, 1000);
+        }
+    });
+
+    ipcMain.on("pulsar-ready", () => {
+        if (initialLaunch) {
+            console.log(`[Pulsar Windows] Forwarding initial launch request via pulsar-ready: ${initialLaunch}`);
             mainWindow?.webContents.send("launch-app-request", initialLaunch);
         }
     });

@@ -22,6 +22,7 @@ const { ipcRenderer }: typeof import("electron") = require("electron");
 const nodeFetch: typeof import("node-fetch").default = require("node-fetch");
 const fs: typeof import("fs") = require("node:fs");
 const path: typeof import("path") = require("node:path");
+const os: typeof import("os") = require("node:os");
 const { promisify }: typeof import("util") = require("node:util");
 const { exec }: typeof import("child_process") = require("node:child_process");
 
@@ -299,6 +300,7 @@ export class Winboat {
                 logger.info(`IPC received launch-app-request for: ${target}`);
                 await this.launchAppByNameOrPath(target);
             });
+            ipcRenderer.send("pulsar-ready");
         }
     }
 
@@ -711,38 +713,110 @@ export class Winboat {
     private static launchingApps = new Set<string>();
 
     async launchAppByNameOrPath(target: string) {
-        const cleanTarget = target.trim().toLowerCase();
-        if (Winboat.launchingApps.has(cleanTarget)) {
+        const cleanTarget = target.trim().replace(/^["']|["']$/g, "");
+        if (Winboat.launchingApps.has(cleanTarget.toLowerCase())) {
             logger.info(`App "${target}" is already being launched, skipping duplicate request.`);
             return;
         }
-        Winboat.launchingApps.add(cleanTarget);
-        setTimeout(() => Winboat.launchingApps.delete(cleanTarget), 3000);
+        Winboat.launchingApps.add(cleanTarget.toLowerCase());
+        setTimeout(() => Winboat.launchingApps.delete(cleanTarget.toLowerCase()), 3000);
 
         logger.info(`Requested launchAppByNameOrPath for: "${target}"`);
-        const apps = (await this.appMgr?.getApps()) || [];
 
-        const targetSlug = slugify(cleanTarget);
+        // Check if target is a file on the Linux host (e.g. downloaded .exe or .msi)
+        let resolvedHostPath = cleanTarget;
+        if (resolvedHostPath.startsWith("~/")) {
+            resolvedHostPath = path.join(os.homedir(), resolvedHostPath.slice(2));
+        }
 
-        let foundApp = apps.find(a => {
-            const name = a.Name.toLowerCase();
-            const cleanName = name.replace(/^[⚙️🖥️]\s*/, "");
-            const filePath = a.Path.toLowerCase();
-            const normalizedPath = filePath.replace(/\\/g, "/");
-            const baseName = path.basename(normalizedPath);
-            const nameWithoutExt = path.basename(normalizedPath, path.extname(normalizedPath));
+        const lowerTarget = resolvedHostPath.toLowerCase();
+        const isFileTarget =
+            resolvedHostPath.startsWith("/") ||
+            resolvedHostPath.startsWith("./") ||
+            lowerTarget.endsWith(".exe") ||
+            lowerTarget.endsWith(".msi") ||
+            lowerTarget.endsWith(".bat") ||
+            lowerTarget.endsWith(".cmd") ||
+            fs.existsSync(resolvedHostPath);
 
-            return (
-                name === cleanTarget ||
-                cleanName === cleanTarget ||
-                slugify(cleanName) === targetSlug ||
-                slugify(name) === targetSlug ||
-                filePath === cleanTarget ||
-                normalizedPath === cleanTarget ||
-                baseName === cleanTarget ||
-                nameWithoutExt === cleanTarget
-            );
-        });
+        let foundApp: WinApp | undefined;
+
+        if (isFileTarget && (fs.existsSync(resolvedHostPath) || resolvedHostPath.startsWith("/"))) {
+            const absPath = path.resolve(resolvedHostPath);
+            const userHome = os.homedir();
+            let windowsPath = "";
+
+            if (absPath.startsWith(userHome)) {
+                // In Windows, Z: is mapped directly to /shared (which is $HOME /home/jaime)
+                const rel = path.relative(userHome, absPath);
+                windowsPath = `Z:\\${rel.replace(/\//g, "\\")}`;
+            } else {
+                // Outside home, copy to storage/temp
+                const tempDir = path.join(WINBOAT_DIR, "storage", "temp");
+                if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+                const destFile = path.join(tempDir, path.basename(absPath));
+                try {
+                    fs.copyFileSync(absPath, destFile);
+                    windowsPath = `C:\\storage\\temp\\${path.basename(absPath)}`;
+                } catch (_) {
+                    windowsPath = `Z:\\${path.basename(absPath)}`;
+                }
+            }
+
+            const ext = path.extname(absPath).toLowerCase();
+            const fileName = path.basename(absPath);
+
+            if (ext === ".msi") {
+                foundApp = {
+                    Name: fileName,
+                    Path: "msiexec.exe",
+                    Args: `/i "${windowsPath}"`,
+                    Source: "guest",
+                    Usage: 0,
+                };
+            } else if (ext === ".bat" || ext === ".cmd") {
+                foundApp = {
+                    Name: fileName,
+                    Path: "cmd.exe",
+                    Args: `/c "${windowsPath}"`,
+                    Source: "guest",
+                    Usage: 0,
+                };
+            } else {
+                foundApp = {
+                    Name: fileName,
+                    Path: windowsPath,
+                    Args: "",
+                    Source: "guest",
+                    Usage: 0,
+                };
+            }
+
+            logger.info(`Resolved host file to Windows path: ${absPath} -> ${windowsPath}`);
+        } else {
+            const apps = (await this.appMgr?.getApps()) || [];
+            const targetSlug = slugify(cleanTarget.toLowerCase());
+
+            foundApp = apps.find(a => {
+                const name = a.Name.toLowerCase();
+                const cleanName = name.replace(/^[⚙️🖥️]\s*/, "");
+                const filePath = a.Path.toLowerCase();
+                const normalizedPath = filePath.replace(/\\/g, "/");
+                const baseName = path.basename(normalizedPath);
+                const nameWithoutExt = path.basename(normalizedPath, path.extname(normalizedPath));
+
+                return (
+                    name === cleanTarget.toLowerCase() ||
+                    cleanName === cleanTarget.toLowerCase() ||
+                    slugify(cleanName) === targetSlug ||
+                    slugify(name) === targetSlug ||
+                    filePath === cleanTarget.toLowerCase() ||
+                    normalizedPath === cleanTarget.toLowerCase() ||
+                    baseName === cleanTarget.toLowerCase() ||
+                    nameWithoutExt === cleanTarget.toLowerCase()
+                );
+            });
+        }
 
         if (!foundApp) {
             foundApp = {
@@ -758,7 +832,9 @@ export class Winboat {
         logger.info(`Found app for launch: ${foundApp.Name} (${foundApp.Path})`);
 
         try {
-            exec(`notify-send -i pulsar-windows "Pulsar Windows" "Abriendo ${displayName}..." -a "Pulsar Windows"`, () => {});
+            const isInstaller = isFileTarget || foundApp.Path.endsWith(".msi") || foundApp.Path.startsWith("Z:");
+            const actionText = isInstaller ? `Ejecutando instalador ${displayName}...` : `Abriendo ${displayName}...`;
+            exec(`notify-send -i pulsar-windows "Pulsar Windows" "${actionText}" -a "Pulsar Windows"`, () => {});
         } catch (_) {}
 
         if (this.isOnline.value) {
@@ -856,9 +932,11 @@ export class Winboat {
                 `/scale-desktop:${effectiveScaleDesktop}`,
             ]);
         } else {
+            args = args.filter(a => a !== "/floatbar");
             const appCmd = app.Args && app.Args.trim() !== "" ? `,cmd:"${app.Args}"` : "";
             args = args.concat([
                 "-wallpaper",
+                "+window-drag",
                 multiMonFlag,
                 `/scale:${effectiveScale}`,
                 `/scale-desktop:${effectiveScaleDesktop}`,

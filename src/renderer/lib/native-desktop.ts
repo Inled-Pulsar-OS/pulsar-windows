@@ -27,7 +27,7 @@ Type=Application
 Name=Pulsar Windows Background Service
 Comment=Inicia Pulsar Windows en segundo plano para abrir aplicaciones rápidamente
 Exec=pulsar-windows --background
-Icon=winboat_logo
+Icon=pulsar-windows
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
@@ -36,6 +36,38 @@ X-Pulsar-Autostart=true
         fs.writeFileSync(AUTOSTART_FILE, content, "utf-8");
     } catch (err) {
         console.error("Failed to ensure autostart desktop entry:", err);
+    }
+}
+
+/**
+ * Registers Pulsar Windows as default handler in GNOME for .exe and .msi files
+ */
+export function ensureMimeHandler(): void {
+    try {
+        if (!fs.existsSync(APPS_DIR)) {
+            fs.mkdirSync(APPS_DIR, { recursive: true });
+        }
+        const mimeDesktopPath = path.join(APPS_DIR, "pulsar-windows-installer.desktop");
+        const content = `[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Pulsar Windows (Ejecutar en Windows)
+Comment=Ejecutar archivos .exe y .msi con Pulsar Windows
+Exec=pulsar-windows %f
+Icon=pulsar-windows
+Terminal=false
+Categories=Utility;System;
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/exe;application/x-exe;application/x-msi;application/vnd.microsoft.portable-executable;
+NoDisplay=false
+`;
+        fs.writeFileSync(mimeDesktopPath, content, "utf-8");
+        exec(
+            "xdg-mime default pulsar-windows-installer.desktop application/x-ms-dos-executable application/x-msdownload application/x-msi application/vnd.microsoft.portable-executable application/x-exe",
+            () => {}
+        );
+        exec("update-desktop-database ~/.local/share/applications", () => {});
+    } catch (err) {
+        console.error("Failed to register MIME handler for .exe/.msi:", err);
     }
 }
 
@@ -103,6 +135,7 @@ export async function syncNativeDesktopEntries(apps: WinApp[]): Promise<void> {
 
         ensureLauncherScript();
         ensureAutostartEntry();
+        ensureMimeHandler();
 
         const currentSlugs = new Set<string>();
 
