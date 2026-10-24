@@ -1,202 +1,248 @@
-name: Build WinBoat
+name: Build and Release Pulsar Windows
+
 permissions:
-    contents: write
+  contents: write
+
 on:
-    push:
-        branches:
-            - main
-        tags:
-            - "v*"
-    workflow_dispatch:
-        inputs:
-            build_type:
-                description: "Build type"
-                required: true
-                default: "all"
-                type: choice
-                options:
-                    - all
-                    - linux-only
-                    - guest-server-only
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Build type"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - linux-only
+          - guest-server-only
+      target_branch:
+        description: "Target repository branch (stable / unstable)"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - unstable
+      deploy_to_repo:
+        description: "Upload and notify Inled central APT/Arch repository"
+        required: true
+        default: true
+        type: boolean
+
 jobs:
-    build:
-        runs-on: ubuntu-22.04
+  guest-server-only:
+    name: Build Guest Server Only
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_type == 'guest-server-only'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache-dependency-path: "guest_server/go.sum"
+
+      - name: Build guest server only
+        run: bash build-guest-server.sh
+
+      - name: Upload guest server artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-server-artifacts
+          path: guest_server/dist/
+
+  build-and-release:
+    name: Build Packages & Publish
+    runs-on: ubuntu-22.04
+    if: >-
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.build_type != 'guest-server-only')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update USB IDs database
+        run: |
+          echo "Updating USB IDs database..."
+          rm -f data/usb.ids
+          curl -sSL -o data/usb.ids http://www.linux-usb.org/usb.ids || true
+          [ -s data/usb.ids ] || touch data/usb.ids
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libusb-1.0-0-dev zstd libarchive-tools jq curl zip
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache-dependency-path: "guest_server/go.sum"
+
+      - name: Install JS dependencies
+        run: bun ci
+
+      - name: Build Guest Server, Transpile and Package Linux App
+        run: bun run build:linux-gs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ELECTRON_BUILDER_COMPRESSION_LEVEL: 5
+
+      - name: Build Arch Linux Pacman Package (.pkg.tar.zst & .pacman)
+        run: bash scripts/build-pacman.sh
+
+      - name: Zip unpacked distribution
+        run: |
+          if [ -d "dist/linux-unpacked" ]; then
+            cd dist && zip -q -r pulsar-windows-linux-unpacked.zip linux-unpacked/
+          fi
+
+      - name: Derive artifact metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION=$(bun -e "console.log(require('./package.json').version)" 2>/dev/null || grep -m1 '"version"' package.json | cut -d '"' -f 4)
+          NAME=$(bun -e "console.log(require('./package.json').name)" 2>/dev/null || echo "pulsar-windows")
+          echo "NAME=$NAME" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v$VERSION"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload DEB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-deb
+          path: dist/*.deb
+          if-no-files-found: ignore
+
+      - name: Upload Pacman Archive Artifact (.pkg.tar.zst)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-arch
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: ignore
+
+      - name: Upload Pacman File Artifact (.pacman)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-pacman
+          path: dist/*.pacman
+          if-no-files-found: ignore
+
+      - name: Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-appimage
+          path: dist/*.AppImage
+          if-no-files-found: ignore
+
+      - name: Upload Unpacked Zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-unpacked
+          path: dist/pulsar-windows-linux-unpacked.zip
+          if-no-files-found: ignore
+
+      # Create or update GitHub Release on tag push or manual dispatch
+      - name: Create or Update GitHub Release
+        id: create_release
         if: >-
-            (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.build_type != 'guest-server-only')
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v6
-            - name: Update USB IDs database
-              run: |
-                  echo "Removing old usb.ids file..."
-                  rm -f data/usb.ids
-                  echo "Downloading latest usb.ids from linux-usb.org..."
-                  curl -o data/usb.ids http://www.linux-usb.org/usb.ids
-                  echo "USB IDs database updated successfully"
-            - name: Show build type
-              run: |
-                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                    echo "Manual workflow triggered with build type: ${{ github.event.inputs.build_type }}"
-                  else
-                    echo "Automatic workflow triggered by ${{ github.event_name }}"
-                  fi
-            - name: Install system dependencies
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y libudev-dev libusb-1.0-0-dev
-            - name: Set up Bun
-              uses: oven-sh/setup-bun@v2
-            - name: Set up Go
-              uses: actions/setup-go@v6
-              with:
-                  go-version: "stable"
-                  cache-dependency-path: "guest_server/go.sum"
-            - name: Install dependencies
-              run: bun ci
-            - name: Build guest server and app
-              run: bun run build:linux-gs
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  ELECTRON_BUILDER_COMPRESSION_LEVEL: 5
-            - name: Derive artifact naming
-              id: meta
-              shell: bash
-              run: |
-                  bun -e "const p=require('./package.json'); console.log('NAME='+p.name)" >> "$GITHUB_OUTPUT"
-                  bun -e "const p=require('./package.json'); console.log('VERSION='+p.version)" >> "$GITHUB_OUTPUT"
-                  ARCH_FROM_FILE=$(ls dist/*.{AppImage,deb,rpm,tar.bz2} 2>/dev/null | head -n1 | xargs -I{} basename {} | sed -E 's/.*-([A-Za-z0-9_]+)\.[^.]+$/\1/')
-                  if [ -n "$ARCH_FROM_FILE" ]; then
-                    echo "ARCH=$ARCH_FROM_FILE" >> "$GITHUB_OUTPUT"
-                  else
-                    BUN_ARCH=$(bun -p "process.arch")
-                    case "$BUN_ARCH" in
-                      x64)   echo "ARCH=x86_64" >> "$GITHUB_OUTPUT" ;;
-                      arm64) echo "ARCH=arm64"  >> "$GITHUB_OUTPUT" ;;
-                      arm)   echo "ARCH=armv7l" >> "$GITHUB_OUTPUT" ;;
-                      *)     echo "ARCH=$BUN_ARCH" >> "$GITHUB_OUTPUT" ;;
-                    esac
-                  fi
-            - name: Upload AppImage
-              uses: actions/upload-artifact@v7
-              with:
-                  name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}.appimage
-                  path: dist/*.AppImage
-                  if-no-files-found: ignore
-            - name: Upload DEB
-              uses: actions/upload-artifact@v7
-              with:
-                  name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}.deb
-                  path: dist/*.deb
-                  if-no-files-found: ignore
-            - name: Upload RPM
-              uses: actions/upload-artifact@v7
-              with:
-                  name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}.rpm
-                  path: dist/*.rpm
-                  if-no-files-found: ignore
-            - name: Upload TAR.BZ2
-              uses: actions/upload-artifact@v7
-              with:
-                  name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}.tar.bz2
-                  path: dist/*.tar.bz2
-                  if-no-files-found: ignore
-            - name: Upload unpacked directory
-              uses: actions/upload-artifact@v7
-              with:
-                  name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}-unpacked.zip
-                  path: dist/linux-unpacked/**
-                  if-no-files-found: ignore
-            - name: Upload guest server zip
-              uses: actions/upload-artifact@v7
-              with:
-                  name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}-guest_server.zip
-                  path: dist/linux-unpacked/resources/guest_server/update/winboat_guest_server.zip
-                  if-no-files-found: ignore
-            # - name: Upload metadata
-            #   uses: actions/upload-artifact@v7
-            #   with:
-            #     name: ${{ steps.meta.outputs.NAME }}-${{ steps.meta.outputs.VERSION }}-${{ steps.meta.outputs.ARCH }}-metadata
-            #     path: |
-            #       dist/latest-linux.yml
-            #       dist/linux-unpacked/resources/guest_server/update/winboat_guest_server.zip
-            #     if-no-files-found: ignore
-    guest-server-only:
-        runs-on: ubuntu-22.04
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_type == 'guest-server-only'
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v6
-            - name: Show build type
-              run: |
-                  echo "Manual workflow triggered with build type: guest-server-only"
-            - name: Set up Go
-              uses: actions/setup-go@v6
-              with:
-                  go-version: "stable"
-                  cache-dependency-path: "guest_server/go.sum"
-            - name: Build guest server only
-              run: bash build-guest-server.sh
-            - name: Upload guest server artifacts
-              uses: actions/upload-artifact@v7
-              with:
-                  name: guest-server-artifacts
-                  path: guest_server/dist/
-    release:
-        runs-on: ubuntu-22.04
+          startsWith(github.ref, 'refs/tags/') ||
+          (github.event_name == 'workflow_dispatch' && (github.event.inputs.deploy_to_repo == 'true' || github.event.inputs.deploy_to_repo == true))
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.TAG }}
+          name: Pulsar Windows ${{ steps.meta.outputs.TAG }}
+          files: |
+            dist/*.deb
+            dist/*.pkg.tar.zst
+            dist/*.pacman
+            dist/*.AppImage
+            dist/*.tar.gz
+            dist/*.tar.bz2
+            dist/pulsar-windows-linux-unpacked.zip
+            dist/latest-linux.yml
+            dist/linux-unpacked/resources/guest_server/update/winboat_guest_server.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Notify central Inled repository (InledGroup/apt) to ingest .deb and .pkg.tar.zst
+      - name: Notify Inled Repo (APT & Arch)
         if: >-
-            startsWith(github.ref, 'refs/tags/') ||
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.build_type == 'all')
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v6
-            - name: Update USB IDs database
-              run: |
-                  echo "Removing old usb.ids file..."
-                  rm -f data/usb.ids
-                  echo "Downloading latest usb.ids from linux-usb.org..."
-                  curl -o data/usb.ids http://www.linux-usb.org/usb.ids
-                  echo "USB IDs database updated successfully"
-            - name: Show build type
-              run: |
-                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                    echo "Manual workflow triggered with build type: ${{ github.event.inputs.build_type }}"
-                  else
-                    echo "Release workflow triggered by tag: ${{ github.ref_name }}"
-                  fi
-            - name: Install system dependencies
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y libudev-dev libusb-1.0-0-dev
-            - name: Set up Bun
-              uses: oven-sh/setup-bun@v2
-            - name: Set up Go
-              uses: actions/setup-go@v6
-              with:
-                  go-version: "stable"
-                  cache-dependency-path: "guest_server/go.sum"
-            - name: Install dependencies
-              run: bun ci
-            - name: Build guest server and app
-              run: bun run build:linux-gs
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  ELECTRON_BUILDER_COMPRESSION_LEVEL: 5
-            - name: Zip unpacked variant
-              run: cd dist && zip -r winboat-linux-unpacked.zip linux-unpacked/
-            - name: Create GitHub Release
-              uses: softprops/action-gh-release@v3
-              with:
-                  files: |
-                      dist/*.AppImage
-                      dist/*.deb
-                      dist/*.rpm
-                      dist/*.tar.bz2
-                      dist/winboat-linux-unpacked.zip
-                      dist/latest-linux.yml
-                      dist/linux-unpacked/resources/guest_server/update/winboat_guest_server.zip
-                  draft: false
-                  prerelease: false
-                  generate_release_notes: true
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.deploy_to_repo == 'true' || github.event.inputs.deploy_to_repo == true))) &&
+          env.INLED_REPO_PAT != ''
+        env:
+          INLED_REPO_PAT: ${{ secrets.INLED_REPO_PAT }}
+        run: |
+          TAG="${{ steps.meta.outputs.TAG }}"
+          TARGET_BRANCH="${{ github.event.inputs.target_branch || 'stable' }}"
+          
+          DEB_FILE=$(basename $(ls dist/*.deb 2>/dev/null | head -n 1 || true))
+          ARCH_FILE=$(basename $(ls dist/*.pkg.tar.zst 2>/dev/null | head -n 1 || true))
+          
+          DEB_URL=""
+          ARCH_URL=""
+          [ -n "$DEB_FILE" ] && DEB_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${DEB_FILE}"
+          [ -n "$ARCH_FILE" ] && ARCH_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${ARCH_FILE}"
+          
+          echo "📡 Preparing dispatch to InledGroup/apt repository..."
+          echo "   Target branch: ${TARGET_BRANCH}"
+          echo "   Debian URL:    ${DEB_URL}"
+          echo "   Arch URL:      ${ARCH_URL}"
+          
+          URLS_LIST=""
+          [ -n "$DEB_URL" ] && URLS_LIST="$DEB_URL"
+          [ -n "$ARCH_URL" ] && URLS_LIST="$URLS_LIST $ARCH_URL"
+          URLS_LIST=$(echo "$URLS_LIST" | xargs)
+          
+          PAYLOAD=$(jq -n \
+            --arg deb "$DEB_URL" \
+            --arg arch "$ARCH_URL" \
+            --arg urls "$URLS_LIST" \
+            --arg branch "$TARGET_BRANCH" \
+            '{
+              event_type: "package_upload",
+              client_payload: {
+                package_url: (if $deb != "" then $deb else null end),
+                arch_url: (if $arch != "" then $arch else null end),
+                package_urls: $urls,
+                branch: $branch
+              }
+            }')
+          
+          echo "Payload:"
+          echo "$PAYLOAD"
+          
+          RESPONSE_CODE=$(curl -s -o /tmp/dispatch_response.json -w "%{http_code}" -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${INLED_REPO_PAT}" \
+            https://api.github.com/repos/InledGroup/apt/dispatches \
+            -d "$PAYLOAD")
+          
+          if [ "$RESPONSE_CODE" -ge 200 ] && [ "$RESPONSE_CODE" -lt 300 ]; then
+            echo "🚀 Dispatch sent successfully to InledGroup/apt (HTTP $RESPONSE_CODE)!"
+          else
+            echo "❌ Failed to send dispatch to InledGroup/apt (HTTP $RESPONSE_CODE)."
+            cat /tmp/dispatch_response.json
+            exit 1
+          fi
