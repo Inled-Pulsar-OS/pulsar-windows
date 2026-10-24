@@ -708,11 +708,20 @@ export class Winboat {
         console.info("So long and thanks for all the fish!");
     }
 
+    private static launchingApps = new Set<string>();
+
     async launchAppByNameOrPath(target: string) {
+        const cleanTarget = target.trim().toLowerCase();
+        if (Winboat.launchingApps.has(cleanTarget)) {
+            logger.info(`App "${target}" is already being launched, skipping duplicate request.`);
+            return;
+        }
+        Winboat.launchingApps.add(cleanTarget);
+        setTimeout(() => Winboat.launchingApps.delete(cleanTarget), 3000);
+
         logger.info(`Requested launchAppByNameOrPath for: "${target}"`);
         const apps = (await this.appMgr?.getApps()) || [];
 
-        const cleanTarget = target.trim().toLowerCase();
         const targetSlug = slugify(cleanTarget);
 
         let foundApp = apps.find(a => {
@@ -745,14 +754,19 @@ export class Winboat {
             };
         }
 
+        const displayName = foundApp.Name.replace(/^[⚙️🖥️]\s*/, "");
+        logger.info(`Found app for launch: ${foundApp.Name} (${foundApp.Path})`);
+
+        try {
+            exec(`notify-send -i pulsar-windows "Pulsar Windows" "Abriendo ${displayName}..." -a "Pulsar Windows"`, () => {});
+        } catch (_) {}
+
         if (this.isOnline.value) {
             await this.launchApp(foundApp);
         } else {
             logger.info(`Pulsar Windows is offline. Starting VM to launch ${foundApp.Name}...`);
             try {
-                new Notification("Pulsar Windows", {
-                    body: `Iniciando Windows en segundo plano para abrir ${foundApp.Name}...`,
-                });
+                exec(`notify-send -i pulsar-windows "Pulsar Windows" "Iniciando Windows en segundo plano para abrir ${displayName}..." -a "Pulsar Windows"`, () => {});
             } catch (_) {}
 
             if (this.containerStatus.value !== ContainerStatus.RUNNING) {
@@ -800,20 +814,58 @@ export class Winboat {
             .concat(newArgs);
         let args = [`/u:${username}`, `/p:${password}`, `/v:127.0.0.1`, `/port:${HOST_RDP_PORT}`, ...combinedArgs];
 
+        let dpr = 1;
+        let hasMultipleDisplays = false;
+        try {
+            const { screen } = require("electron");
+            const displays = screen?.getAllDisplays?.() || [];
+            hasMultipleDisplays = displays.length > 1;
+            if (displays.length > 0) {
+                dpr = Math.max(...displays.map((d: any) => d.scaleFactor || 1));
+            } else if (typeof window !== "undefined" && window.devicePixelRatio) {
+                dpr = window.devicePixelRatio;
+            }
+        } catch (_) {
+            if (typeof window !== "undefined" && window.devicePixelRatio) {
+                dpr = window.devicePixelRatio;
+            }
+        }
+
+        const autoScaleDesktop = Math.round(dpr * 100);
+        const autoScale = dpr >= 1.75 ? 180 : dpr >= 1.25 ? 140 : 100;
+
+        const effectiveScale = (this.#wbConfig?.config.scale && this.#wbConfig.config.scale !== 100)
+            ? this.#wbConfig.config.scale
+            : autoScale;
+
+        const effectiveScaleDesktop = (this.#wbConfig?.config.scaleDesktop && this.#wbConfig.config.scaleDesktop !== 100)
+            ? this.#wbConfig.config.scaleDesktop
+            : autoScaleDesktop;
+
+        const multiMonFlag = this.#wbConfig?.config.multiMonitor === MultiMonitorMode.Span
+            ? "+span"
+            : (this.#wbConfig?.config.multiMonitor === MultiMonitorMode.MultiMon || hasMultipleDisplays)
+                ? "/multimon"
+                : "";
+
         if (app.Path == InternalApps.WINDOWS_DESKTOP) {
             args = args.concat([
                 "+f",
                 this.#wbConfig?.config.smartcardEnabled ? "/smartcard" : "",
-                `/scale:${this.#wbConfig?.config.scale ?? 100}`,
+                `/scale:${effectiveScale}`,
+                `/scale-desktop:${effectiveScaleDesktop}`,
+                "+dynamic-resolution",
             ]);
         } else {
+            const appCmd = app.Args && app.Args.trim() !== "" ? `,cmd:"${app.Args}"` : "";
             args = args.concat([
-                this.#wbConfig?.config.multiMonitor === MultiMonitorMode.Span ? "+span" : "",
                 "-wallpaper",
-                this.#wbConfig?.config.multiMonitor === MultiMonitorMode.MultiMon ? "/multimon" : "",
-                `/scale-desktop:${this.#wbConfig?.config.scaleDesktop ?? 100}`,
+                multiMonFlag,
+                `/scale:${effectiveScale}`,
+                `/scale-desktop:${effectiveScaleDesktop}`,
+                "+dynamic-resolution",
                 `/wm-class:winboat-${cleanAppName}`,
-                `/app:program:${app.Path},name:${cleanAppName},cmd:"${app.Args}"`,
+                `/app:program:${app.Path},name:${cleanAppName}${appCmd},hidef:on`,
             ]);
         }
 
@@ -856,62 +908,15 @@ export class Winboat {
     }
 
     async checkVersionAndUpdateGuestServer() {
-        // 1. Compare the running Guest Server version with the bundled app version.
-        const versionRes = await nodeFetch(`${WINBOAT_API_URL}/version`, { headers: guestAuthHeaders() });
-        const version = (await versionRes.json()) as GuestServerVersion;
-        const appVersion = import.meta.env.VITE_APP_VERSION;
-
-        // Any mismatch triggers an update. This is intentionally not semver-aware:
-        // installing an older WinBoat deliberately rolls the guest back to match.
-        if (version.version === appVersion) {
-            return;
-        }
-        logger.info(`Guest Server update needed: ${version.version} -> ${appVersion}`);
-
-        // 2. Push the bundled update payload to the Guest Server Updater, which
-        //    applies it atomically and rolls back if the new server fails to come
-        //    up. Auth is the shared token; the raw zip is the request body.
-        this.isUpdatingGuestServer.value = true;
-        const zipPath = guestServerUpdateZipPath();
-        logger.info(`Sending update payload to the Guest Server Updater: ${zipPath}`);
-
         try {
-            const res = await nodeFetch(`${WINBOAT_UPDATE_URL}/update`, {
-                method: "POST",
-                headers: {
-                    ...guestAuthHeaders(),
-                    "Content-Type": "application/octet-stream",
-                },
-                body: fs.createReadStream(zipPath),
-            });
-            if (res.status !== 200) {
-                throw new Error(`Updater returned ${res.status}: ${await res.text()}`);
-            }
-            logger.info("Guest Server Updater applied the update successfully");
+            const versionRes = await nodeFetch(`${WINBOAT_API_URL}/version`, { headers: guestAuthHeaders() });
+            const version = (await versionRes.json()) as GuestServerVersion;
+            logger.info(`Guest Server is running version: ${version.version}`);
         } catch (e) {
-            logger.error("Failed to apply Guest Server update");
-            logger.error(e);
+            logger.warn("Could not check guest server version:", e);
+        } finally {
             this.isUpdatingGuestServer.value = false;
-            throw e;
         }
-
-        // 3. The updater already health-gated the new server before responding;
-        //    this just re-syncs the host's own online view, bounded by a
-        //    wall-clock deadline (getHealth itself can block up to FETCH_TIMEOUT).
-        let online = await this.getHealth();
-        const deadline = Date.now() + GUEST_ONLINE_TIMEOUT_MS;
-        while (!online && Date.now() < deadline) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            online = await this.getHealth();
-        }
-
-        if (online) {
-            logger.info("Update completed, Winboat Guest Server is online");
-        } else {
-            logger.error("Guest Server did not report healthy within the timeout after update");
-        }
-
-        this.isUpdatingGuestServer.value = false;
     }
 
     /**

@@ -68,6 +68,9 @@
                         <li>Restart WinBoat</li>
                     </ol>
                     <p>We're sorry for the inconvenience. 😟</p>
+                    <button class="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm text-white font-medium cursor-pointer" @click="updateDialog?.close()">
+                        Cerrar y continuar
+                    </button>
                 </div>
             </template>
 
@@ -220,6 +223,9 @@ onMounted(async () => {
                     updateTimeout = null;
                 }
                 manualUpdateRequired.value = false;
+                if (updateDialog.value?.open) {
+                    updateDialog.value.close();
+                }
             }
         },
     );
