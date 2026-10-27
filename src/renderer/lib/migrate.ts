@@ -2,6 +2,7 @@ import { createLogger } from "../utils/log";
 import { WINBOAT_DIR } from "./constants";
 
 const path: typeof import("path") = require("path");
+const fs: typeof import("fs") = require("fs");
 const logger = createLogger(path.join(WINBOAT_DIR, "migrations.log"));
 
 type Migration = {
@@ -15,7 +16,31 @@ type Migration = {
  * Migrations run in order on every app start, each gated by its own `isNeeded` check.
  */
 const migrations: Migration[] = [
-    // No migrations for the current release cycle
+    {
+        name: "default-autostart-container",
+        isNeeded: () => {
+            const dockerFile = path.join(WINBOAT_DIR, "docker-compose.yml");
+            const podmanFile = path.join(WINBOAT_DIR, "podman-compose.yml");
+            const targetFile = fs.existsSync(dockerFile) ? dockerFile : fs.existsSync(podmanFile) ? podmanFile : null;
+            if (!targetFile) return false;
+            try {
+                const content = fs.readFileSync(targetFile, "utf-8");
+                return content.includes("restart: no") || content.includes('restart: "no"');
+            } catch {
+                return false;
+            }
+        },
+        migrate: async () => {
+            const dockerFile = path.join(WINBOAT_DIR, "docker-compose.yml");
+            const podmanFile = path.join(WINBOAT_DIR, "podman-compose.yml");
+            const targetFile = fs.existsSync(dockerFile) ? dockerFile : fs.existsSync(podmanFile) ? podmanFile : null;
+            if (!targetFile) return;
+            const content = fs.readFileSync(targetFile, "utf-8");
+            const updated = content.replace(/restart:\s*"?no"?/g, "restart: unless-stopped");
+            fs.writeFileSync(targetFile, updated, "utf-8");
+            logger.info(`[performAutoMigrations]: Migrated ${targetFile} to restart: unless-stopped`);
+        },
+    },
 ];
 
 /**

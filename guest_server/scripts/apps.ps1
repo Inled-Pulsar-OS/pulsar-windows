@@ -17,6 +17,12 @@ try {
     Set-ItemProperty -Path $regPath -Name "EnableSnapAssistFlyout" -Value 0 -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $regPath -Name "SnapAssist" -Value 0 -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $regPath -Name "JointResize" -Value 0 -ErrorAction SilentlyContinue
+
+    # Disable ForegroundLockTimeout so secondary/stacked windows activate instantly on click from GNOME
+    $desktopPath = "HKCU:\Control Panel\Desktop"
+    if (-not (Test-Path $desktopPath)) { New-Item -Path $desktopPath -Force | Out-Null }
+    Set-ItemProperty -Path $desktopPath -Name "ForegroundLockTimeout" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $desktopPath -Name "ForegroundFlashCount" -Value 0 -Type DWord -ErrorAction SilentlyContinue
 } catch {}
 
 # Load System.Drawing for icon extraction, suppress errors if already loaded

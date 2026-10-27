@@ -18,3 +18,12 @@ Windows Registry Editor Version 5.00
 
     ; Disable "Do you want your PC to be discoverable" prompt after each host system reboot
     [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff]
+
+    ; Remove focus lock timeout so stacked/background windows can be selected immediately
+    [HKEY_CURRENT_USER\Control Panel\Desktop]
+    "ForegroundLockTimeout"=dword:00000000
+    "ForegroundFlashCount"=dword:00000000
+
+    [HKEY_USERS\.DEFAULT\Control Panel\Desktop]
+    "ForegroundLockTimeout"=dword:00000000
+    "ForegroundFlashCount"=dword:00000000

@@ -402,6 +402,7 @@ import {
     type WindowsVersionKey,
 } from "../lib/constants";
 import { InstallManager, InstallStates } from "../lib/install";
+import { ensureAutostartEntry } from "../lib/native-desktop";
 import { WinboatConfig } from "../lib/config";
 import { ContainerRuntimes, getContainerSpecs, type ContainerSpecs } from "../lib/containers/common";
 import { openAnchorLink } from "../utils/openLink";
@@ -592,6 +593,9 @@ function startInstall() {
 
     installManager.emitter.on("stateChanged", newState => {
         installState.value = newState;
+        if (newState === InstallStates.COMPLETED) {
+            ensureAutostartEntry(true);
+        }
     });
 
     installManager.emitter.on("preinstallMsg", msg => {

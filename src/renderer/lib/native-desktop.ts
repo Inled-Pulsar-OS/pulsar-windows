@@ -17,8 +17,14 @@ const AUTOSTART_FILE = path.join(AUTOSTART_DIR, "pulsar-windows.desktop");
 /**
  * Ensures Pulsar Windows autostarts in background on system boot
  */
-export function ensureAutostartEntry(): void {
+export function ensureAutostartEntry(enabled: boolean = true): void {
     try {
+        if (!enabled) {
+            if (fs.existsSync(AUTOSTART_FILE)) {
+                fs.unlinkSync(AUTOSTART_FILE);
+            }
+            return;
+        }
         if (!fs.existsSync(AUTOSTART_DIR)) {
             fs.mkdirSync(AUTOSTART_DIR, { recursive: true });
         }
@@ -137,7 +143,21 @@ export async function syncNativeDesktopEntries(apps: WinApp[]): Promise<void> {
         }
 
         ensureLauncherScript();
-        ensureAutostartEntry();
+
+        // Check if autostart was explicitly disabled in compose configuration
+        const dockerCompose = path.join(WINBOAT_DIR, "docker-compose.yml");
+        const podmanCompose = path.join(WINBOAT_DIR, "podman-compose.yml");
+        let autostartEnabled = true;
+        const targetCompose = fs.existsSync(dockerCompose) ? dockerCompose : fs.existsSync(podmanCompose) ? podmanCompose : null;
+        if (targetCompose) {
+            try {
+                const composeContent = fs.readFileSync(targetCompose, "utf-8");
+                if (composeContent.includes("restart: no") || composeContent.includes('restart: "no"')) {
+                    autostartEnabled = false;
+                }
+            } catch (_) {}
+        }
+        ensureAutostartEntry(autostartEnabled);
         ensureMimeHandler();
 
         const currentSlugs = new Set<string>();

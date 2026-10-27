@@ -63,8 +63,8 @@
                 <!-- Auto Start Container -->
                 <ConfigCard
                     icon="clarity:power-solid"
-                    title="Auto Start Container"
-                    desc="If enabled, the Windows container will automatically be started when the system boots up"
+                    :title="isSpanish ? 'Iniciar automáticamente al arranque' : 'Auto Start Container'"
+                    :desc="isSpanish ? 'Inicia Pulsar Windows al encender el equipo y arranca Windows automáticamente en segundo plano' : 'If enabled, the Windows container will automatically be started when the system boots up'"
                     type="switch"
                     v-model:value="autoStartContainer"
                 />
@@ -446,6 +446,7 @@ import { Icon } from "@iconify/vue";
 import { MultiMonitorMode, RdpArg, WinboatConfig } from "../lib/config";
 import { USBManager, type PTSerializableDeviceInfo } from "../lib/usbmanager";
 import { type Device } from "usb";
+import { ensureAutostartEntry } from "../lib/native-desktop";
 import {
     USB_VID_BLACKLIST,
     RESTART_UNLESS_STOPPED,
@@ -460,6 +461,8 @@ import {
 const { app }: typeof import("@electron/remote") = require("@electron/remote");
 const electron: typeof import("electron") = require("electron").remote || require("@electron/remote");
 const os: typeof import("os") = require("node:os");
+
+const isSpanish = computed(() => navigator.language.startsWith("es"));
 
 // For Resources
 const compose = ref<ComposeConfig | null>(null);
@@ -562,6 +565,7 @@ async function saveCompose() {
     isApplyingChanges.value = true;
     try {
         await winboat.replaceCompose(compose.value!);
+        ensureAutostartEntry(autoStartContainer.value);
         await assignValues();
     } catch (e) {
         console.error("Failed to apply changes");

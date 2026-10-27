@@ -168,8 +168,10 @@ import { Winboat } from "./lib/winboat";
 import { openAnchorLink } from "./utils/openLink";
 import { WinboatConfig } from "./lib/config";
 import { USBManager } from "./lib/usbmanager";
-import { NOVNC_URL } from "./lib/constants";
+import { NOVNC_URL, AUTOSTART_RESTART_POLICIES } from "./lib/constants";
 import { performAutoMigrations } from "./lib/migrate";
+import { ensureAutostartEntry } from "./lib/native-desktop";
+import { ContainerStatus } from "./lib/containers/container";
 const { BrowserWindow }: typeof import("@electron/remote") = require("@electron/remote");
 const os: typeof import("os") = require("node:os");
 
@@ -201,6 +203,25 @@ onMounted(async () => {
 
         // After migrations, go to home
         $router.push("/home");
+
+        // Check if Auto-Start is configured, ensure autostart entry & boot Windows in background
+        try {
+            const compose = Winboat.readCompose(winboat.containerMgr!.composeFilePath);
+            const restartPolicy = compose?.services?.windows?.restart || "";
+            const shouldAutoStart = AUTOSTART_RESTART_POLICIES.includes(restartPolicy);
+            ensureAutostartEntry(shouldAutoStart);
+            if (shouldAutoStart) {
+                const currentStatus = await winboat.containerMgr!.getStatus();
+                if (currentStatus !== ContainerStatus.RUNNING) {
+                    console.log("[Pulsar Windows] Auto-start container enabled. Starting Windows container in background...");
+                    winboat.startContainer().catch(err => {
+                        console.error("[Pulsar Windows] Error auto-starting container:", err);
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn("[Pulsar Windows] Failed to execute auto-start check:", e);
+        }
     } else {
         console.log("Not installed, redirecting to setup...");
         $router.push("/setup");

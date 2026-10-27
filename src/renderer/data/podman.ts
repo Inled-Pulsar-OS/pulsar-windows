@@ -5,7 +5,7 @@ import {
     GUEST_QMP_PORT,
     GUEST_UPDATE_PORT,
     QMP_ARGUMENT,
-    RESTART_NO,
+    RESTART_UNLESS_STOPPED,
 } from "../lib/constants";
 
 export const PODMAN_DEFAULT_COMPOSE: ComposeConfig = {
@@ -33,7 +33,7 @@ export const PODMAN_DEFAULT_COMPOSE: ComposeConfig = {
             cap_add: ["NET_ADMIN"],
             ports: [...COMPOSE_PORT_MAPPINGS],
             stop_grace_period: "120s",
-            restart: RESTART_NO,
+            restart: RESTART_UNLESS_STOPPED,
             privileged: true,
             volumes: [
                 "data:/storage",

@@ -80,6 +80,11 @@ const stockArgs = [
     "/floatbar",
     "/compression",
     "/sec:tls",
+    "-grab-keyboard",
+    "-grab-mouse",
+    "/mouse:grab:off",
+    "+async-update",
+    "+async-channels",
 ];
 
 /**
@@ -937,6 +942,11 @@ export class Winboat {
             args = args.concat([
                 "-wallpaper",
                 "+window-drag",
+                "-grab-keyboard",
+                "-grab-mouse",
+                "/mouse:grab:off",
+                "+async-update",
+                "+async-channels",
                 multiMonFlag,
                 `/scale:${effectiveScale}`,
                 `/scale-desktop:${effectiveScaleDesktop}`,
@@ -944,7 +954,7 @@ export class Winboat {
             ]);
         }
 
-        args = args.filter((v, _i, _a) => v.trim() !== "");
+        args = Array.from(new Set(args.filter(v => v.trim() !== "")));
 
         this.appMgr?.incrementAppUsage(app);
         this.appMgr?.writeToDisk();
