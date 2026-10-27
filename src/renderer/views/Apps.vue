@@ -410,6 +410,10 @@ const launchingAppId = ref<string | null>(null);
 
 function handleLaunchApp(app: WinApp) {
     launchingAppId.value = app.id!;
+    try {
+        const { ipcRenderer } = require("electron");
+        ipcRenderer?.send("show-launch-splash", app.Name);
+    } catch (_) {}
     winboat.launchApp(app);
     setTimeout(() => {
         launchingAppId.value = null;

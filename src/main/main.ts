@@ -113,8 +113,137 @@ function isBackgroundRequested(argv: string[]): boolean {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
+let splashTimer: NodeJS.Timeout | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+
+function showLaunchSplash(appName: string) {
+    if (splashTimer) {
+        clearTimeout(splashTimer);
+        splashTimer = null;
+    }
+    const base = (appName || "").replace(/^[⚙️🖥️]\s*/, "");
+    const cleanName = base ? base.replace(/\.[a-zA-Z0-9]+$/, "") : "Aplicación";
+    const title = `Iniciando ${cleanName}...`;
+
+    if (!splashWindow || splashWindow.isDestroyed()) {
+        splashWindow = new BrowserWindow({
+            width: 320,
+            height: 110,
+            frame: false,
+            transparent: true,
+            alwaysOnTop: true,
+            skipTaskbar: true,
+            resizable: false,
+            show: false,
+            center: true,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+            },
+        });
+    }
+
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow: hidden;
+        }
+        .container {
+            width: 290px;
+            height: 84px;
+            background: rgba(20, 20, 24, 0.90);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 18px;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 25px rgba(139, 92, 246, 0.3);
+            display: flex;
+            align-items: center;
+            padding: 0 18px;
+            gap: 15px;
+            animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.94); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 3.5px solid rgba(139, 92, 246, 0.2);
+            border-top-color: #a855f7;
+            border-right-color: #8b5cf6;
+            animation: spin 0.8s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .text-wrap {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .title {
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .subtitle {
+            color: #a1a1aa;
+            font-size: 11px;
+            margin-top: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <div class="text-wrap">
+            <div class="title">${title}</div>
+            <div class="subtitle">Pulsar Windows • Cargando</div>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+    splashWindow.once("ready-to-show", () => {
+        splashWindow?.show();
+    });
+
+    splashTimer = setTimeout(() => {
+        hideLaunchSplash();
+    }, 12000);
+}
+
+function hideLaunchSplash() {
+    if (splashTimer) {
+        clearTimeout(splashTimer);
+        splashTimer = null;
+    }
+    if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close();
+        splashWindow = null;
+    }
+}
 
 const initialLaunch = extractLaunchArg(process.argv);
 const startInBackground = isBackgroundRequested(process.argv) || !!initialLaunch;
@@ -213,6 +342,7 @@ function createWindow() {
     mainWindow.webContents.on("did-finish-load", () => {
         if (initialLaunch) {
             console.log(`[Pulsar Windows] Forwarding initial launch request: ${initialLaunch}`);
+            showLaunchSplash(initialLaunch);
             mainWindow?.webContents.send("launch-app-request", initialLaunch);
             setTimeout(() => {
                 mainWindow?.webContents.send("launch-app-request", initialLaunch);
@@ -273,6 +403,7 @@ app.on("second-instance", (_event, commandLine) => {
     const target = extractLaunchArg(commandLine);
     if (target) {
         console.log(`[Pulsar Windows] Received launch request for app: ${target}`);
+        showLaunchSplash(target);
         mainWindow?.webContents.send("launch-app-request", target);
     } else {
         if (mainWindow) {
@@ -285,6 +416,14 @@ app.on("second-instance", (_event, commandLine) => {
             mainWindow.focus();
         }
     }
+});
+
+ipcMain.on("show-launch-splash", (_event, appName: string) => {
+    showLaunchSplash(appName);
+});
+
+ipcMain.on("hide-launch-splash", () => {
+    hideLaunchSplash();
 });
 
 ipcMain.on("quit-app", () => {

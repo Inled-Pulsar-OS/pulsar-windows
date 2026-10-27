@@ -143,7 +143,7 @@
                                     </div>
                                     <div>
                                         <div class="flex items-center gap-2">
-                                            <span class="text-sm font-semibold text-white">Tiny11</span>
+                                            <span class="text-sm font-semibold text-white">Tiny11 (NTDEV)</span>
                                             <span class="text-[10px] bg-violet-500/30 text-violet-300 px-2 py-0.5 rounded-full font-medium">
                                                 {{ isSpanish ? 'Recomendado' : 'Recommended' }}
                                             </span>
@@ -157,6 +157,36 @@
                                 </div>
                                 <Icon
                                     :icon="windowsVersion === 'tiny11' && !customIsoPath ? 'mdi:radiobox-marked' : 'mdi:radiobox-blank'"
+                                    class="size-5 text-violet-400 shrink-0"
+                                />
+                            </div>
+
+                            <!-- Opción 2: Nano11 by NTDEV -->
+                            <div
+                                @click="selectWindowsVersion('nano11')"
+                                class="cursor-pointer p-4 rounded-xl border transition-all flex items-center justify-between"
+                                :class="windowsVersion === 'nano11' && !customIsoPath ? 'border-violet-500 bg-violet-500/10' : 'border-neutral-800 bg-neutral-900/60 hover:border-neutral-700'"
+                            >
+                                <div class="flex items-center gap-3.5">
+                                    <div class="p-2.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                                        <Icon icon="mdi:feather" class="size-5" />
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-semibold text-white">Nano11 (NTDEV)</span>
+                                            <span class="text-[10px] bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full font-medium">
+                                                {{ isSpanish ? 'Ultraligero ~2.5 GB' : 'Ultra-light ~2.5 GB' }}
+                                            </span>
+                                        </div>
+                                        <div class="text-xs text-neutral-400 mt-0.5">
+                                            {{ isSpanish 
+                                                ? 'Edición super-comprimida de NTDEV, máxima velocidad y el menor uso de recursos.' 
+                                                : 'Super-compact build by NTDEV with maximum speed and minimal resource usage.' }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <Icon
+                                    :icon="windowsVersion === 'nano11' && !customIsoPath ? 'mdi:radiobox-marked' : 'mdi:radiobox-blank'"
                                     class="size-5 text-violet-400 shrink-0"
                                 />
                             </div>

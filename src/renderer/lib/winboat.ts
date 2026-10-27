@@ -837,6 +837,7 @@ export class Winboat {
         logger.info(`Found app for launch: ${foundApp.Name} (${foundApp.Path})`);
 
         try {
+            ipcRenderer?.send("show-launch-splash", displayName);
             const isInstaller = isFileTarget || foundApp.Path.endsWith(".msi") || foundApp.Path.startsWith("Z:");
             const actionText = isInstaller ? `Ejecutando instalador ${displayName}...` : `Abriendo ${displayName}...`;
             exec(`notify-send -i pulsar-windows "Pulsar Windows" "${actionText}" -a "Pulsar Windows"`, () => {});
@@ -959,20 +960,30 @@ export class Winboat {
         this.appMgr?.incrementAppUsage(app);
         this.appMgr?.writeToDisk();
 
-        // Terminate any existing FreeRDP process so only ONE clean connection manages the session
+        // Terminate any existing FreeRDP process gracefully so new window connection manages the session
         try {
             const { execSync } = require("child_process");
-            execSync("killall -9 xfreerdp3 xfreerdp 2>/dev/null || true");
+            execSync("killall -15 xfreerdp3 xfreerdp 2>/dev/null || true");
+            const start = Date.now();
+            while (Date.now() - start < 300) {}
         } catch (_) {}
 
         if (!freeRDPInstallation) {
             logger.error("No FreeRDP installation found");
+            try {
+                ipcRenderer?.send("hide-launch-splash");
+            } catch (_) {}
             return;
         }
 
         try {
             const safeToLogArgs = freeRDPInstallation.stringifyExec(args).replace(/\/p:[^ ]+/g, "/p:********");
             logger.info(`Launch FreeRDP with command:\n${safeToLogArgs}`);
+            setTimeout(() => {
+                try {
+                    ipcRenderer?.send("hide-launch-splash");
+                } catch (_) {}
+            }, 2500);
             await freeRDPInstallation.exec(args);
         } catch (e) {
             const execError = e as ExecFileAsyncError;

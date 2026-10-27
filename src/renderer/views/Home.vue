@@ -12,7 +12,11 @@
                 <div>
                     <div class="flex flex-row gap-2 items-center justify-center mb-6 *:m-0">
                         <h1 class="text-3xl">
-                            {{ WINDOWS_VERSIONS[compose?.services.windows.environment.VERSION ?? "11"] ?? "Unknown" }}
+                            {{
+                                compose?.services.windows.environment.VERSION?.includes("nano11")
+                                    ? WINDOWS_VERSIONS.nano11
+                                    : (WINDOWS_VERSIONS[compose?.services.windows.environment.VERSION ?? "11"] ?? "Windows")
+                            }}
                         </h1>
                         <p class="bg-purple-500 px-4 rounded-full text-lg font-semibold !m-0">
                             {{ capitalizeFirstLetter(winboat.containerMgr!.executableAlias) }}

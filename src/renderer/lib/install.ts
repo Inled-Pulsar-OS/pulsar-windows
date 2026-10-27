@@ -1,5 +1,5 @@
 import { type InstallConfiguration } from "../../types";
-import { GUEST_TOKEN_PATH, NOVNC_URL, WINBOAT_API_URL, WINBOAT_DIR } from "./constants";
+import { GUEST_TOKEN_PATH, NANO11_ISO_URL, NOVNC_URL, WINBOAT_API_URL, WINBOAT_DIR } from "./constants";
 import { createLogger } from "../utils/log";
 import { guestServerOemDir } from "../utils/guestServer";
 import { createNanoEvents, type Emitter } from "nanoevents";
@@ -84,7 +84,8 @@ export class InstallManager {
         composeContent.services.windows.environment.RAM_SIZE = `${this.conf.ramGB}G`;
         composeContent.services.windows.environment.CPU_CORES = `${this.conf.cpuCores}`;
         composeContent.services.windows.environment.DISK_SIZE = `${this.conf.diskSpaceGB}G`;
-        composeContent.services.windows.environment.VERSION = this.conf.windowsVersion;
+        composeContent.services.windows.environment.VERSION =
+            this.conf.windowsVersion === "nano11" ? NANO11_ISO_URL : this.conf.windowsVersion;
         composeContent.services.windows.environment.LANGUAGE = this.conf.windowsLanguage;
         composeContent.services.windows.environment.USERNAME = this.conf.username;
         composeContent.services.windows.environment.PASSWORD = this.conf.password;

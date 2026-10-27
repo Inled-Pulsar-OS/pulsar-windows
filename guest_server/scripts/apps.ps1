@@ -19,10 +19,37 @@ try {
     Set-ItemProperty -Path $regPath -Name "JointResize" -Value 0 -ErrorAction SilentlyContinue
 
     # Disable ForegroundLockTimeout so secondary/stacked windows activate instantly on click from GNOME
-    $desktopPath = "HKCU:\Control Panel\Desktop"
-    if (-not (Test-Path $desktopPath)) { New-Item -Path $desktopPath -Force | Out-Null }
-    Set-ItemProperty -Path $desktopPath -Name "ForegroundLockTimeout" -Value 0 -Type DWord -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path $desktopPath -Name "ForegroundFlashCount" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+    try {
+        Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class WinAPI {
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint pvParam, uint fWinIni);
+        }
+"@ -ErrorAction SilentlyContinue
+        [WinAPI]::SystemParametersInfo(0x2001, 0, 0, 3) | Out-Null
+    } catch {}
+
+    $desktopPaths = @(
+        "HKCU:\Control Panel\Desktop",
+        "Registry::HKEY_USERS\.DEFAULT\Control Panel\Desktop"
+    )
+    foreach ($dp in $desktopPaths) {
+        if (-not (Test-Path $dp)) { New-Item -Path $dp -Force | Out-Null }
+        Set-ItemProperty -Path $dp -Name "ForegroundLockTimeout" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $dp -Name "ForegroundFlashCount" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+    }
+
+    try {
+        Get-ChildItem -Path "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^S-1-5-21-\d+-\d+-\d+-\d+$' } | ForEach-Object {
+            $userDesktop = "Registry::HKEY_USERS\$($_.PSChildName)\Control Panel\Desktop"
+            if (Test-Path $userDesktop) {
+                Set-ItemProperty -Path $userDesktop -Name "ForegroundLockTimeout" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $userDesktop -Name "ForegroundFlashCount" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+            }
+        }
+    } catch {}
 } catch {}
 
 # Load System.Drawing for icon extraction, suppress errors if already loaded

@@ -14,8 +14,11 @@ export const CONTAINER_LOG_FILE = path.join(WINBOAT_DIR, "container.log");
 // once at install time and seeded into the guest via the OEM mount.
 export const GUEST_TOKEN_PATH = path.join(WINBOAT_DIR, "guest_token");
 
+export const NANO11_ISO_URL = "https://archive.org/download/nano11_25h2/nano11%2025h2.iso";
+
 export const WINDOWS_VERSIONS = {
     tiny11: "Tiny11 (Recomendado - Ligero y Rápido)",
+    nano11: "Nano11 by NTDEV (Ultraligero ~2.5 GB)",
     "11": "Windows 11 Pro",
     "11l": "Windows 11 LTSC 2024",
     "11e": "Windows 11 Enterprise",
