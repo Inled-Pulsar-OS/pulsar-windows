@@ -174,14 +174,14 @@
                                     <div>
                                         <div class="flex items-center gap-2">
                                             <span class="text-sm font-semibold text-white">Nano11 (NTDEV)</span>
-                                            <span class="text-[10px] bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full font-medium">
-                                                {{ isSpanish ? 'Ultraligero ~2.5 GB' : 'Ultra-light ~2.5 GB' }}
+                                            <span class="text-[10px] bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded-full font-medium">
+                                                {{ isSpanish ? 'Experimental • ~2.5 GB' : 'Experimental • ~2.5 GB' }}
                                             </span>
                                         </div>
                                         <div class="text-xs text-neutral-400 mt-0.5">
                                             {{ isSpanish 
-                                                ? 'Edición super-comprimida de NTDEV, máxima velocidad y el menor uso de recursos.' 
-                                                : 'Super-compact build by NTDEV with maximum speed and minimal resource usage.' }}
+                                                ? 'Edición ultra-recortada por NTDEV. Muy rápida pero no recomendada para uso diario (puede carecer de librerías del sistema).' 
+                                                : 'Ultra-stripped edition by NTDEV. Very fast but not recommended for daily use (may lack system libraries).' }}
                                         </div>
                                     </div>
                                 </div>
