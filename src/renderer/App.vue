@@ -204,23 +204,11 @@ onMounted(async () => {
         // After migrations, go to home
         $router.push("/home");
 
-        // Check if Auto-Start is configured, ensure autostart entry & boot Windows in background
+        // Ensure autostart entry is removed - Pulsar Windows only starts on-demand
         try {
-            const compose = Winboat.readCompose(winboat.containerMgr!.composeFilePath);
-            const restartPolicy = compose?.services?.windows?.restart || "";
-            const shouldAutoStart = AUTOSTART_RESTART_POLICIES.includes(restartPolicy);
-            ensureAutostartEntry(shouldAutoStart);
-            if (shouldAutoStart) {
-                const currentStatus = await winboat.containerMgr!.getStatus();
-                if (currentStatus !== ContainerStatus.RUNNING) {
-                    console.log("[Pulsar Windows] Auto-start container enabled. Starting Windows container in background...");
-                    winboat.startContainer().catch(err => {
-                        console.error("[Pulsar Windows] Error auto-starting container:", err);
-                    });
-                }
-            }
+            ensureAutostartEntry(false);
         } catch (e) {
-            console.warn("[Pulsar Windows] Failed to execute auto-start check:", e);
+            console.warn("[Pulsar Windows] Failed to execute autostart cleanup:", e);
         }
     } else {
         console.log("Not installed, redirecting to setup...");

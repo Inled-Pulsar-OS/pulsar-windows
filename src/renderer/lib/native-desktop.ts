@@ -15,34 +15,16 @@ const AUTOSTART_DIR = path.join(HOME, ".config", "autostart");
 const AUTOSTART_FILE = path.join(AUTOSTART_DIR, "pulsar-windows.desktop");
 
 /**
- * Ensures Pulsar Windows autostarts in background on system boot
+ * Autostart entry disabled - Pulsar Windows only starts on-demand
+ * when the user clicks an .exe file or a Windows app shortcut.
  */
-export function ensureAutostartEntry(enabled: boolean = true): void {
+export function ensureAutostartEntry(enabled: boolean = false): void {
     try {
-        if (!enabled) {
-            if (fs.existsSync(AUTOSTART_FILE)) {
-                fs.unlinkSync(AUTOSTART_FILE);
-            }
-            return;
+        if (fs.existsSync(AUTOSTART_FILE)) {
+            fs.unlinkSync(AUTOSTART_FILE);
         }
-        if (!fs.existsSync(AUTOSTART_DIR)) {
-            fs.mkdirSync(AUTOSTART_DIR, { recursive: true });
-        }
-        const content = `[Desktop Entry]
-Type=Application
-Name=Pulsar Windows Background Service
-Comment=Starts Pulsar Windows background daemon for fast app launching
-Comment[es]=Inicia Pulsar Windows en segundo plano para abrir aplicaciones rápidamente
-Exec=pulsar-windows --background
-Icon=pulsar-windows
-Terminal=false
-Categories=Utility;
-X-GNOME-Autostart-enabled=true
-X-Pulsar-Autostart=true
-`;
-        fs.writeFileSync(AUTOSTART_FILE, content, "utf-8");
     } catch (err) {
-        console.error("Failed to ensure autostart desktop entry:", err);
+        console.error("Failed to remove autostart desktop entry:", err);
     }
 }
 
