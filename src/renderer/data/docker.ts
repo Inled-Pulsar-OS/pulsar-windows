@@ -34,7 +34,7 @@ export const DOCKER_DEFAULT_COMPOSE: ComposeConfig = {
             privileged: true,
             ports: [...COMPOSE_PORT_MAPPINGS],
             stop_grace_period: "120s",
-            restart: RESTART_UNLESS_STOPPED,
+            restart: "no",
             volumes: [
                 "data:/storage",
                 "${HOME}:/shared",

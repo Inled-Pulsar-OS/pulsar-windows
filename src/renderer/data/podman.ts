@@ -33,7 +33,7 @@ export const PODMAN_DEFAULT_COMPOSE: ComposeConfig = {
             cap_add: ["NET_ADMIN"],
             ports: [...COMPOSE_PORT_MAPPINGS],
             stop_grace_period: "120s",
-            restart: RESTART_UNLESS_STOPPED,
+            restart: "no",
             privileged: true,
             volumes: [
                 "data:/storage",

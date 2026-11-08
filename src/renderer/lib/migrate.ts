@@ -17,7 +17,7 @@ type Migration = {
  */
 const migrations: Migration[] = [
     {
-        name: "default-autostart-container",
+        name: "disable-autostart-container",
         isNeeded: () => {
             const dockerFile = path.join(WINBOAT_DIR, "docker-compose.yml");
             const podmanFile = path.join(WINBOAT_DIR, "podman-compose.yml");
@@ -25,7 +25,7 @@ const migrations: Migration[] = [
             if (!targetFile) return false;
             try {
                 const content = fs.readFileSync(targetFile, "utf-8");
-                return content.includes("restart: no") || content.includes('restart: "no"');
+                return content.includes("restart: unless-stopped") || content.includes("restart: always");
             } catch {
                 return false;
             }
@@ -36,9 +36,9 @@ const migrations: Migration[] = [
             const targetFile = fs.existsSync(dockerFile) ? dockerFile : fs.existsSync(podmanFile) ? podmanFile : null;
             if (!targetFile) return;
             const content = fs.readFileSync(targetFile, "utf-8");
-            const updated = content.replace(/restart:\s*"?no"?/g, "restart: unless-stopped");
+            const updated = content.replace(/restart:\s*"?unless-stopped"?/g, 'restart: "no"').replace(/restart:\s*"?always"?/g, 'restart: "no"');
             fs.writeFileSync(targetFile, updated, "utf-8");
-            logger.info(`[performAutoMigrations]: Migrated ${targetFile} to restart: unless-stopped`);
+            logger.info(`[performAutoMigrations]: Migrated ${targetFile} to restart: "no"`);
         },
     },
 ];
